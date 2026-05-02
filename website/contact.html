@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Contact — Alex Chen</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+  <nav>
+    <div class="nav-inner">
+      <a href="index.html" class="nav-logo">Alex Chen</a>
+      <ul class="nav-links">
+        <li><a href="index.html">Home</a></li>
+        <li><a href="about.html">About</a></li>
+        <li><a href="contact.html" class="active">Contact</a></li>
+      </ul>
+    </div>
+  </nav>
+
+  <main>
+    <div class="contact-grid">
+      <div class="contact-info">
+        <h1>Let's work together</h1>
+        <p>
+          Have a project in mind, a question, or just want to say hello?
+          Fill out the form or reach me directly through any of the channels below.
+          I usually reply within 24 hours.
+        </p>
+
+        <a href="mailto:alex@example.com" class="contact-link">
+          <span class="contact-link-icon">✉️</span>
+          alex@example.com
+        </a>
+        <a href="https://github.com" class="contact-link">
+          <span class="contact-link-icon">💻</span>
+          github.com/alexchen
+        </a>
+        <a href="https://linkedin.com" class="contact-link">
+          <span class="contact-link-icon">🔗</span>
+          linkedin.com/in/alexchen
+        </a>
+        <a href="https://twitter.com" class="contact-link">
+          <span class="contact-link-icon">🐦</span>
+          @alexchendev
+        </a>
+      </div>
+
+      <div class="form-card">
+        <h2>Send a message</h2>
+        <form onsubmit="handleSubmit(event)">
+          <div class="form-group">
+            <label for="name">Name</label>
+            <input type="text" id="name" name="name" placeholder="Your name" required />
+          </div>
+          <div class="form-group">
+            <label for="email">Email</label>
+            <input type="email" id="email" name="email" placeholder="you@example.com" required />
+          </div>
+          <div class="form-group">
+            <label for="subject">Subject</label>
+            <input type="text" id="subject" name="subject" placeholder="What's this about?" />
+          </div>
+          <div class="form-group">
+            <label for="message">Message</label>
+            <textarea id="message" name="message" placeholder="Tell me about your project..." required></textarea>
+          </div>
+          <button type="submit" class="btn btn-primary btn-full" id="submit-btn">Send Message</button>
+        </form>
+      </div>
+    </div>
+  </main>
+
+  <footer>
+    <p>&copy; 2026 Alex Chen. Built with plain HTML &amp; CSS.</p>
+  </footer>
+
+  <script>
+    function handleSubmit(e) {
+      e.preventDefault();
+      const btn = document.getElementById('submit-btn');
+      btn.textContent = 'Message sent ✓';
+      btn.style.background = 'var(--success)';
+      btn.disabled = true;
+      e.target.reset();
+    }
+  </script>
+
+</body>
+</html>
