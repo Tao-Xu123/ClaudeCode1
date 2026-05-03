@@ -1,0 +1,932 @@
+// ============================================================================
+// AI CONFLUENCE TRADING STRATEGY v3.0
+// ============================================================================
+// Multi-indicator AI scoring engine with full risk management suite.
+// Combines trend, momentum, volatility, volume, and pattern analysis into
+// a weighted neural-inspired signal score. Includes live dashboard overlay.
+// ============================================================================
+//@version=5
+strategy(
+     title                = "AI Confluence Trading Strategy v3.0",
+     shorttitle           = "AI-CTS v3.0",
+     overlay              = true,
+     pyramiding           = 0,
+     default_qty_type     = strategy.percent_of_equity,
+     default_qty_value    = 10,
+     initial_capital      = 100000,
+     commission_type      = strategy.commission.percent,
+     commission_value     = 0.05,
+     slippage             = 2,
+     max_bars_back        = 500,
+     process_orders_on_close = false
+     )
+
+// ============================================================================
+// ─── IMPORTS ────────────────────────────────────────────────────────────────
+// ============================================================================
+import TradingView/ta/7
+
+// ============================================================================
+// ─── CONFIGURATION GROUPS ───────────────────────────────────────────────────
+// ============================================================================
+var GRP_AI    = "🤖 AI Engine"
+var GRP_TREND = "📈 Trend System"
+var GRP_MOM   = "⚡ Momentum System"
+var GRP_VOL   = "🌊 Volatility System"
+var GRP_VOLM  = "📊 Volume System"
+var GRP_SR    = "🎯 Support & Resistance"
+var GRP_RISK  = "🛡️ Risk Management"
+var GRP_FILT  = "🔍 Filters"
+var GRP_DISP  = "🖥️ Display"
+
+// ============================================================================
+// ─── AI ENGINE SETTINGS ─────────────────────────────────────────────────────
+// ============================================================================
+ai_bull_thresh  = input.float(65.0,  "Bull Entry Threshold (%)",  minval=50, maxval=95, step=1,  group=GRP_AI)
+ai_bear_thresh  = input.float(65.0,  "Bear Entry Threshold (%)",  minval=50, maxval=95, step=1,  group=GRP_AI)
+ai_exit_thresh  = input.float(40.0,  "Exit Score Threshold (%)",  minval=10, maxval=60, step=1,  group=GRP_AI)
+
+// Weights (must total 100 for intuitive percentages)
+w_trend   = input.float(25.0, "Trend Weight",     minval=0, maxval=50, step=1, group=GRP_AI)
+w_mom     = input.float(20.0, "Momentum Weight",  minval=0, maxval=50, step=1, group=GRP_AI)
+w_vol_ind = input.float(15.0, "Volatility Weight",minval=0, maxval=50, step=1, group=GRP_AI)
+w_volume  = input.float(15.0, "Volume Weight",    minval=0, maxval=50, step=1, group=GRP_AI)
+w_pattern = input.float(15.0, "Pattern Weight",   minval=0, maxval=50, step=1, group=GRP_AI)
+w_sr      = input.float(10.0, "S/R Weight",       minval=0, maxval=50, step=1, group=GRP_AI)
+
+// ============================================================================
+// ─── TREND SYSTEM ───────────────────────────────────────────────────────────
+// ============================================================================
+ema_fast   = input.int(8,   "Fast EMA",        minval=2,  group=GRP_TREND)
+ema_mid    = input.int(21,  "Mid EMA",         minval=5,  group=GRP_TREND)
+ema_slow   = input.int(50,  "Slow EMA",        minval=10, group=GRP_TREND)
+ema_200    = input.int(200, "Trend EMA",       minval=50, group=GRP_TREND)
+adx_len    = input.int(14,  "ADX Length",      minval=7,  group=GRP_TREND)
+adx_thresh = input.float(20.0, "ADX Threshold",minval=10, group=GRP_TREND)
+use_ichimoku = input.bool(true, "Use Ichimoku Cloud", group=GRP_TREND)
+ich_conv   = input.int(9,   "Ichimoku Conversion", group=GRP_TREND)
+ich_base   = input.int(26,  "Ichimoku Base",       group=GRP_TREND)
+ich_span   = input.int(52,  "Ichimoku Span B",     group=GRP_TREND)
+
+// ============================================================================
+// ─── MOMENTUM SYSTEM ────────────────────────────────────────────────────────
+// ============================================================================
+rsi_len    = input.int(14,  "RSI Length",          minval=2,  group=GRP_MOM)
+rsi_ob     = input.float(70, "RSI Overbought",      group=GRP_MOM)
+rsi_os     = input.float(30, "RSI Oversold",        group=GRP_MOM)
+macd_fast  = input.int(12,  "MACD Fast",           minval=2,  group=GRP_MOM)
+macd_slow  = input.int(26,  "MACD Slow",           minval=5,  group=GRP_MOM)
+macd_sig   = input.int(9,   "MACD Signal",         minval=2,  group=GRP_MOM)
+stoch_k    = input.int(14,  "Stoch %K",            minval=3,  group=GRP_MOM)
+stoch_d    = input.int(3,   "Stoch %D",            minval=1,  group=GRP_MOM)
+stoch_ob   = input.float(80, "Stoch Overbought",    group=GRP_MOM)
+stoch_os   = input.float(20, "Stoch Oversold",      group=GRP_MOM)
+cci_len    = input.int(20,  "CCI Length",          minval=5,  group=GRP_MOM)
+mfi_len    = input.int(14,  "MFI Length",          minval=5,  group=GRP_MOM)
+williams_len = input.int(14,"Williams %R Length",  minval=3,  group=GRP_MOM)
+use_roc    = input.bool(true, "Use Rate of Change", group=GRP_MOM)
+roc_len    = input.int(12,  "ROC Length",          minval=2,  group=GRP_MOM)
+
+// ============================================================================
+// ─── VOLATILITY SYSTEM ──────────────────────────────────────────────────────
+// ============================================================================
+bb_len     = input.int(20,  "BB Length",      minval=5,  group=GRP_VOL)
+bb_mult    = input.float(2.0,"BB StdDev",     minval=0.5,group=GRP_VOL)
+kc_len     = input.int(20,  "KC Length",      minval=5,  group=GRP_VOL)
+kc_mult    = input.float(1.5,"KC Multiplier", minval=0.5,group=GRP_VOL)
+atr_len    = input.int(14,  "ATR Length",     minval=3,  group=GRP_VOL)
+use_squeeze= input.bool(true,"Use BB/KC Squeeze", group=GRP_VOL)
+
+// ============================================================================
+// ─── VOLUME SYSTEM ──────────────────────────────────────────────────────────
+// ============================================================================
+vwap_src   = input.source(hlc3, "VWAP Source",     group=GRP_VOLM)
+obv_smooth = input.int(10,      "OBV Smoothing",   minval=2, group=GRP_VOLM)
+vol_ma_len = input.int(20,      "Volume MA Length",minval=5, group=GRP_VOLM)
+vol_thresh = input.float(1.5,   "Volume Surge Multiplier", minval=1.0, group=GRP_VOLM)
+use_cmf    = input.bool(true,   "Use Chaikin MF",  group=GRP_VOLM)
+cmf_len    = input.int(21,      "CMF Length",      minval=5, group=GRP_VOLM)
+
+// ============================================================================
+// ─── SUPPORT & RESISTANCE ───────────────────────────────────────────────────
+// ============================================================================
+pivot_type  = input.string("Traditional", "Pivot Type",
+             options=["Traditional","Fibonacci","Woodie","Camarilla"], group=GRP_SR)
+sr_lookback = input.int(20, "S/R Lookback Bars",  minval=5, group=GRP_SR)
+sr_proximity= input.float(0.5, "S/R Proximity (%)",minval=0.1, step=0.1, group=GRP_SR)
+
+// ============================================================================
+// ─── RISK MANAGEMENT ────────────────────────────────────────────────────────
+// ============================================================================
+sl_type    = input.string("ATR",  "Stop Loss Type", options=["ATR","Percent","Structure"], group=GRP_RISK)
+sl_atr_mult= input.float(2.0, "SL ATR Multiplier",  minval=0.5, step=0.25, group=GRP_RISK)
+sl_pct     = input.float(2.0, "SL Percent (%)",     minval=0.1, step=0.25, group=GRP_RISK)
+tp_type    = input.string("RR",   "Take Profit Type",options=["ATR","Percent","RR"], group=GRP_RISK)
+tp_rr      = input.float(2.5, "TP Risk:Reward",     minval=0.5, step=0.25, group=GRP_RISK)
+tp_atr_mult= input.float(4.0, "TP ATR Multiplier",  minval=0.5, step=0.25, group=GRP_RISK)
+tp_pct     = input.float(4.0, "TP Percent (%)",     minval=0.1, step=0.25, group=GRP_RISK)
+use_trail  = input.bool(true,  "Use Trailing Stop",  group=GRP_RISK)
+trail_atr  = input.float(1.5,  "Trail ATR Multiplier", minval=0.5, step=0.25, group=GRP_RISK)
+use_be     = input.bool(true,  "Move SL to BE at TP1", group=GRP_RISK)
+be_trigger = input.float(1.0,  "BE Trigger (R multiple)", minval=0.5, group=GRP_RISK)
+max_dd_pct = input.float(20.0, "Max Drawdown % (circuit breaker)", minval=5, group=GRP_RISK)
+
+// ============================================================================
+// ─── FILTERS ────────────────────────────────────────────────────────────────
+// ============================================================================
+use_time_filter = input.bool(false, "Use Session Filter", group=GRP_FILT)
+session_start   = input.session("0930-1600", "Allowed Session", group=GRP_FILT)
+use_day_filter  = input.bool(false, "Exclude Monday/Friday", group=GRP_FILT)
+min_score_consec= input.int(1, "Min Consecutive Score Bars", minval=1, maxval=5, group=GRP_FILT)
+cool_down_bars  = input.int(3, "Cooldown Bars After Exit",   minval=0, maxval=20, group=GRP_FILT)
+
+// ============================================================================
+// ─── DISPLAY ────────────────────────────────────────────────────────────────
+// ============================================================================
+show_emas       = input.bool(true,  "Show EMA Lines",       group=GRP_DISP)
+show_bb         = input.bool(true,  "Show Bollinger Bands", group=GRP_DISP)
+show_kc         = input.bool(false, "Show Keltner Channels",group=GRP_DISP)
+show_vwap       = input.bool(true,  "Show VWAP",            group=GRP_DISP)
+show_pivots     = input.bool(true,  "Show Daily Pivots",    group=GRP_DISP)
+show_signals    = input.bool(true,  "Show Entry/Exit Labels",group=GRP_DISP)
+show_dashboard  = input.bool(true,  "Show Dashboard",       group=GRP_DISP)
+show_score_bg   = input.bool(true,  "Show Score Background",group=GRP_DISP)
+dash_location   = input.string("Top Right", "Dashboard Location",
+                 options=["Top Right","Top Left","Bottom Right","Bottom Left"], group=GRP_DISP)
+
+// ============================================================================
+// ─── CALCULATIONS: TREND ────────────────────────────────────────────────────
+// ============================================================================
+ema8   = ta.ema(close, ema_fast)
+ema21  = ta.ema(close, ema_mid)
+ema50  = ta.ema(close, ema_slow)
+ema200 = ta.ema(close, ema_200)
+
+// ADX / DI
+[diplus, diminus, adx_val] = ta.dmi(adx_len, adx_len)
+
+// Ichimoku
+ich_conv_line = math.avg(ta.highest(ich_conv), ta.lowest(ich_conv))
+ich_base_line = math.avg(ta.highest(ich_base), ta.lowest(ich_base))
+ich_spanA     = math.avg(ich_conv_line, ich_base_line)
+ich_spanB     = math.avg(ta.highest(ich_span), ta.lowest(ich_span))
+ich_lagging   = close[ich_base]
+ich_above_cloud = use_ichimoku ? (close > math.max(ich_spanA[ich_base], ich_spanB[ich_base])) : false
+ich_below_cloud = use_ichimoku ? (close < math.min(ich_spanA[ich_base], ich_spanB[ich_base])) : false
+
+// Trend Score: +1 per bull condition, score 0-8
+trend_bull_score = 0
+trend_bull_score += close > ema8    ? 1 : 0
+trend_bull_score += ema8  > ema21   ? 1 : 0
+trend_bull_score += ema21 > ema50   ? 1 : 0
+trend_bull_score += ema50 > ema200  ? 1 : 0
+trend_bull_score += close > ema200  ? 1 : 0
+trend_bull_score += adx_val > adx_thresh ? 1 : 0
+trend_bull_score += diplus > diminus ? 1 : 0
+trend_bull_score += ich_above_cloud  ? 1 : 0
+trend_max_score  = 8.0
+
+trend_bear_score = 0
+trend_bear_score += close < ema8    ? 1 : 0
+trend_bear_score += ema8  < ema21   ? 1 : 0
+trend_bear_score += ema21 < ema50   ? 1 : 0
+trend_bear_score += ema50 < ema200  ? 1 : 0
+trend_bear_score += close < ema200  ? 1 : 0
+trend_bear_score += adx_val > adx_thresh ? 1 : 0
+trend_bear_score += diminus > diplus ? 1 : 0
+trend_bear_score += ich_below_cloud  ? 1 : 0
+
+// ============================================================================
+// ─── CALCULATIONS: MOMENTUM ─────────────────────────────────────────────────
+// ============================================================================
+rsi_val   = ta.rsi(close, rsi_len)
+
+[macd_line, sig_line, hist_line] = ta.macd(close, macd_fast, macd_slow, macd_sig)
+macd_bull_cross = ta.crossover(macd_line, sig_line)
+macd_bear_cross = ta.crossunder(macd_line, sig_line)
+
+stoch_k_val = ta.sma(ta.stoch(close, high, low, stoch_k), stoch_d)
+stoch_d_val = ta.sma(stoch_k_val, stoch_d)
+
+cci_val  = ta.cci(close, cci_len)
+mfi_val  = ta.mfi(hlc3, mfi_len)
+will_r   = ta.wpr(williams_len)
+roc_val  = use_roc ? ta.roc(close, roc_len) : 0.0
+
+// RSI divergence (simplified: price new low but RSI higher low)
+rsi_bull_div = close < ta.lowest(close, 10)[1] and rsi_val > ta.lowest(rsi_val, 10)[1]
+rsi_bear_div = close > ta.highest(close, 10)[1] and rsi_val < ta.highest(rsi_val, 10)[1]
+
+// Momentum score (0-10 bull, 0-10 bear)
+mom_bull_score = 0
+mom_bull_score += rsi_val > 50  ? 1 : 0
+mom_bull_score += rsi_val < rsi_ob ? 1 : 0   // not overbought
+mom_bull_score += ta.crossover(rsi_val, 50)  ? 2 : 0   // fresh cross bonus
+mom_bull_score += macd_line > sig_line ? 1 : 0
+mom_bull_score += macd_line > 0        ? 1 : 0
+mom_bull_score += hist_line > hist_line[1] ? 1 : 0  // histogram growing
+mom_bull_score += stoch_k_val < stoch_ob ? 1 : 0
+mom_bull_score += stoch_k_val > stoch_os ? 1 : 0
+mom_bull_score += cci_val > 0   ? 1 : 0
+mom_bull_score += mfi_val > 50  ? 1 : 0
+mom_bull_score += will_r > -50  ? 1 : 0
+mom_bull_score += roc_val > 0   ? 1 : 0
+mom_bull_score += rsi_bull_div  ? 2 : 0
+mom_max_score  = 14.0
+
+mom_bear_score = 0
+mom_bear_score += rsi_val < 50  ? 1 : 0
+mom_bear_score += rsi_val > rsi_os ? 1 : 0
+mom_bear_score += ta.crossunder(rsi_val, 50) ? 2 : 0
+mom_bear_score += macd_line < sig_line ? 1 : 0
+mom_bear_score += macd_line < 0        ? 1 : 0
+mom_bear_score += hist_line < hist_line[1] ? 1 : 0
+mom_bear_score += stoch_k_val > stoch_os ? 1 : 0
+mom_bear_score += stoch_k_val < stoch_ob ? 1 : 0
+mom_bear_score += cci_val < 0   ? 1 : 0
+mom_bear_score += mfi_val < 50  ? 1 : 0
+mom_bear_score += will_r < -50  ? 1 : 0
+mom_bear_score += roc_val < 0   ? 1 : 0
+mom_bear_score += rsi_bear_div  ? 2 : 0
+
+// ============================================================================
+// ─── CALCULATIONS: VOLATILITY ───────────────────────────────────────────────
+// ============================================================================
+atr_val   = ta.atr(atr_len)
+atr_pct   = atr_val / close * 100
+
+[bb_upper, bb_mid, bb_lower] = ta.bb(close, bb_len, bb_mult)
+bb_width  = (bb_upper - bb_lower) / bb_mid
+bb_pct_b  = (close - bb_lower) / (bb_upper - bb_lower)
+
+kc_mid    = ta.ema(close, kc_len)
+kc_range  = kc_mult * ta.atr(kc_len)
+kc_upper  = kc_mid + kc_range
+kc_lower  = kc_mid - kc_range
+
+// Squeeze: BB inside KC
+bb_squeeze = use_squeeze ? (bb_upper < kc_upper and bb_lower > kc_lower) : false
+squeeze_release_bull = use_squeeze ? (not bb_squeeze and bb_squeeze[1] and close > bb_mid) : false
+squeeze_release_bear = use_squeeze ? (not bb_squeeze and bb_squeeze[1] and close < bb_mid) : false
+
+// Historical volatility (20-bar)
+log_ret   = math.log(close / close[1])
+hv_20     = ta.stdev(log_ret, 20) * math.sqrt(252) * 100
+
+// Volatility Score (0-6 each direction)
+vol_bull_score = 0
+vol_bull_score += bb_pct_b < 0.5  ? 1 : 0   // price in lower half of BB
+vol_bull_score += bb_pct_b > 0.0  ? 1 : 0   // above lower band
+vol_bull_score += close > bb_mid  ? 0 : 1   // near lower band
+vol_bull_score += close < bb_mid  ? 2 : 0   // prefer setups below mid (mean reversion component)
+vol_bull_score += squeeze_release_bull ? 2 : 0
+vol_max_score  = 6.0
+
+vol_bear_score = 0
+vol_bear_score += bb_pct_b > 0.5  ? 1 : 0
+vol_bear_score += bb_pct_b < 1.0  ? 1 : 0
+vol_bear_score += close < bb_mid  ? 0 : 1
+vol_bear_score += close > bb_mid  ? 2 : 0
+vol_bear_score += squeeze_release_bear ? 2 : 0
+
+// ============================================================================
+// ─── CALCULATIONS: VOLUME ───────────────────────────────────────────────────
+// ============================================================================
+vol_ma       = ta.sma(volume, vol_ma_len)
+vol_surge    = volume > vol_ma * vol_thresh
+vol_trend_up = ta.ema(volume, 5) > ta.ema(volume, 20)
+
+// OBV
+obv_val      = ta.obv
+obv_sma      = ta.sma(obv_val, obv_smooth)
+obv_rising   = obv_val > obv_sma
+
+// VWAP
+vwap_val     = ta.vwap(vwap_src)
+above_vwap   = close > vwap_val
+below_vwap   = close < vwap_val
+
+// Chaikin Money Flow
+cmf_val      = use_cmf ? ta.cmf(cmf_len) : 0.0
+
+// Accumulation/Distribution
+ad_line      = ta.accdist
+ad_sma       = ta.sma(ad_line, 10)
+ad_rising    = ad_line > ad_sma
+
+// Volume Profile (simplified: rel vol vs 50-bar avg)
+vol_50_avg   = ta.sma(volume, 50)
+rel_vol      = volume / vol_50_avg
+
+// Volume Score (0-7 each)
+volume_bull_score = 0
+volume_bull_score += above_vwap    ? 2 : 0
+volume_bull_score += obv_rising    ? 1 : 0
+volume_bull_score += ad_rising     ? 1 : 0
+volume_bull_score += cmf_val > 0   ? 1 : 0
+volume_bull_score += vol_surge     ? 1 : 0
+volume_bull_score += vol_trend_up  ? 1 : 0
+vol_max_score = 7.0
+
+volume_bear_score = 0
+volume_bear_score += below_vwap    ? 2 : 0
+volume_bear_score += not obv_rising ? 1 : 0
+volume_bear_score += not ad_rising  ? 1 : 0
+volume_bear_score += cmf_val < 0   ? 1 : 0
+volume_bear_score += vol_surge     ? 1 : 0
+volume_bear_score += not vol_trend_up ? 1 : 0
+
+// ============================================================================
+// ─── CALCULATIONS: CANDLESTICK PATTERNS ─────────────────────────────────────
+// ============================================================================
+body_size    = math.abs(close - open)
+candle_range = high - low
+upper_wick   = high - math.max(close, open)
+lower_wick   = math.min(close, open) - low
+is_bullish   = close > open
+is_bearish   = close < open
+body_pct     = candle_range > 0 ? body_size / candle_range : 0
+
+// Engulfing
+bull_engulf = is_bullish and open < close[1] and close > open[1] and is_bearish[1]
+bear_engulf = is_bearish and open > close[1] and close < open[1] and is_bullish[1]
+
+// Hammer / Shooting Star
+is_hammer   = lower_wick > body_size * 2 and upper_wick < body_size * 0.5 and body_pct > 0.1
+is_star     = upper_wick > body_size * 2 and lower_wick < body_size * 0.5 and body_pct > 0.1
+
+// Doji
+is_doji     = body_pct < 0.1
+
+// Morning/Evening Star (3-bar)
+morn_star   = is_bearish[2] and body_size[2] > body_size[1] and is_doji[1] and is_bullish
+even_star   = is_bullish[2] and body_size[2] > body_size[1] and is_doji[1] and is_bearish
+
+// Marubozu (strong trend bar)
+bull_marub  = is_bullish  and lower_wick < body_size * 0.05 and upper_wick < body_size * 0.05
+bear_marub  = is_bearish  and lower_wick < body_size * 0.05 and upper_wick < body_size * 0.05
+
+// Three White Soldiers / Three Black Crows
+three_white = is_bullish and is_bullish[1] and is_bullish[2] and
+             close > close[1] and close[1] > close[2]
+three_black = is_bearish and is_bearish[1] and is_bearish[2] and
+             close < close[1] and close[1] < close[2]
+
+// Tweezer Bottom/Top
+tweezer_bot = math.abs(low - low[1]) < atr_val * 0.05 and is_bearish[1] and is_bullish
+tweezer_top = math.abs(high - high[1]) < atr_val * 0.05 and is_bullish[1] and is_bearish
+
+// Pattern Score (0-10 each)
+pat_bull_score = 0
+pat_bull_score += bull_engulf  ? 3 : 0
+pat_bull_score += is_hammer    ? 2 : 0
+pat_bull_score += morn_star    ? 3 : 0
+pat_bull_score += bull_marub   ? 2 : 0
+pat_bull_score += three_white  ? 2 : 0
+pat_bull_score += tweezer_bot  ? 2 : 0
+pat_max_score  = 10.0
+
+pat_bear_score = 0
+pat_bear_score += bear_engulf  ? 3 : 0
+pat_bear_score += is_star      ? 2 : 0
+pat_bear_score += even_star    ? 3 : 0
+pat_bear_score += bear_marub   ? 2 : 0
+pat_bear_score += three_black  ? 2 : 0
+pat_bear_score += tweezer_top  ? 2 : 0
+
+// ============================================================================
+// ─── CALCULATIONS: SUPPORT & RESISTANCE ─────────────────────────────────────
+// ============================================================================
+// Swing pivots
+ph = ta.pivothigh(high, sr_lookback, sr_lookback)
+pl = ta.pivotlow(low,  sr_lookback, sr_lookback)
+
+var float last_ph = na
+var float last_pl = na
+if not na(ph)
+    last_ph := ph
+if not na(pl)
+    last_pl := pl
+
+prox_band = close * sr_proximity / 100
+
+near_resistance = not na(last_ph) and math.abs(close - last_ph) < prox_band
+near_support    = not na(last_pl) and math.abs(close - last_pl) < prox_band
+
+// Fibonacci retracement from recent swing
+fib_lookback = 50
+swing_high_fib = ta.highest(high,  fib_lookback)
+swing_low_fib  = ta.lowest(low,    fib_lookback)
+fib_range      = swing_high_fib - swing_low_fib
+fib_382 = swing_high_fib - fib_range * 0.382
+fib_500 = swing_high_fib - fib_range * 0.500
+fib_618 = swing_high_fib - fib_range * 0.618
+
+near_fib_support = (math.abs(close - fib_382) < prox_band or
+                   math.abs(close - fib_500) < prox_band or
+                   math.abs(close - fib_618) < prox_band)
+
+// Daily Pivot Points (Traditional)
+// Use higher-timeframe OHLC
+prev_high  = request.security(syminfo.tickerid, "D", high[1],  lookahead=barmerge.lookahead_on)
+prev_low   = request.security(syminfo.tickerid, "D", low[1],   lookahead=barmerge.lookahead_on)
+prev_close = request.security(syminfo.tickerid, "D", close[1], lookahead=barmerge.lookahead_on)
+prev_open  = request.security(syminfo.tickerid, "D", open[1],  lookahead=barmerge.lookahead_on)
+
+pivot_p  = (prev_high + prev_low + prev_close) / 3
+pivot_r1 = 2 * pivot_p - prev_low
+pivot_s1 = 2 * pivot_p - prev_high
+pivot_r2 = pivot_p + (prev_high - prev_low)
+pivot_s2 = pivot_p - (prev_high - prev_low)
+pivot_r3 = pivot_r1 + (prev_high - prev_low)
+pivot_s3 = pivot_s1 - (prev_high - prev_low)
+
+near_pivot_support    = math.abs(close - pivot_s1) < prox_band or
+                        math.abs(close - pivot_s2) < prox_band or
+                        math.abs(close - pivot_p)  < prox_band
+near_pivot_resistance = math.abs(close - pivot_r1) < prox_band or
+                        math.abs(close - pivot_r2) < prox_band or
+                        math.abs(close - pivot_p)  < prox_band
+
+// SR Score (0-6 each)
+sr_bull_score = 0
+sr_bull_score += near_support       ? 2 : 0
+sr_bull_score += near_fib_support   ? 2 : 0
+sr_bull_score += near_pivot_support ? 2 : 0
+sr_max_score  = 6.0
+
+sr_bear_score = 0
+sr_bear_score += near_resistance       ? 2 : 0
+sr_bear_score += near_fib_support      ? 0 : 1  // not near support = better for bear
+sr_bear_score += near_pivot_resistance ? 2 : 0
+sr_bear_score += not near_support      ? 1 : 0
+
+// ============================================================================
+// ─── AI SCORING ENGINE ──────────────────────────────────────────────────────
+// ============================================================================
+// Normalize each component to 0-100 and apply weights
+total_weight = w_trend + w_mom + w_vol_ind + w_volume + w_pattern + w_sr
+
+norm_trend_bull  = (trend_bull_score  / trend_max_score)  * 100
+norm_mom_bull    = (mom_bull_score    / mom_max_score)    * 100
+norm_vol_bull    = (vol_bull_score    / vol_max_score)    * 100
+norm_volume_bull = (volume_bull_score / vol_max_score)    * 100
+norm_pat_bull    = (pat_bull_score    / pat_max_score)    * 100
+norm_sr_bull     = (sr_bull_score     / sr_max_score)     * 100
+
+norm_trend_bear  = (trend_bear_score  / trend_max_score)  * 100
+norm_mom_bear    = (mom_bear_score    / mom_max_score)    * 100
+norm_vol_bear    = (vol_bear_score    / vol_max_score)    * 100
+norm_volume_bear = (volume_bear_score / vol_max_score)    * 100
+norm_pat_bear    = (pat_bear_score    / pat_max_score)    * 100
+norm_sr_bear     = (sr_bear_score     / sr_max_score)     * 100
+
+// Weighted composite score (0-100)
+bull_score_raw = total_weight > 0 ?
+     (norm_trend_bull  * w_trend   +
+      norm_mom_bull    * w_mom     +
+      norm_vol_bull    * w_vol_ind +
+      norm_volume_bull * w_volume  +
+      norm_pat_bull    * w_pattern +
+      norm_sr_bull     * w_sr)     / total_weight : 0.0
+
+bear_score_raw = total_weight > 0 ?
+     (norm_trend_bear  * w_trend   +
+      norm_mom_bear    * w_mom     +
+      norm_vol_bear    * w_vol_ind +
+      norm_volume_bear * w_volume  +
+      norm_pat_bear    * w_pattern +
+      norm_sr_bear     * w_sr)     / total_weight : 0.0
+
+// Smooth scores (Exponential average over 3 bars)
+bull_score = ta.ema(bull_score_raw, 3)
+bear_score = ta.ema(bear_score_raw, 3)
+
+score_diff = bull_score - bear_score
+
+// ============================================================================
+// ─── FILTERS ────────────────────────────────────────────────────────────────
+// ============================================================================
+in_session  = use_time_filter ? not na(time(timeframe.period, session_start)) : true
+day_ok      = use_day_filter  ? (dayofweek != dayofweek.monday and
+                                  dayofweek != dayofweek.friday) : true
+
+// Circuit breaker: stop trading if equity drops too much
+equity_drawdown = (strategy.initial_capital - strategy.equity) /
+                  strategy.initial_capital * 100
+circuit_ok = equity_drawdown < max_dd_pct
+
+// Cooldown counter
+var int bars_since_exit = 999
+if strategy.closedtrades > strategy.closedtrades[1]
+    bars_since_exit := 0
+else
+    bars_since_exit := bars_since_exit + 1
+cooldown_ok = bars_since_exit >= cool_down_bars
+
+// Consecutive score filter
+var int bull_consec = 0
+var int bear_consec = 0
+bull_consec := bull_score >= ai_bull_thresh ? bull_consec + 1 : 0
+bear_consec := bear_score >= ai_bear_thresh ? bear_consec + 1 : 0
+
+filters_ok = in_session and day_ok and circuit_ok and cooldown_ok
+
+// ============================================================================
+// ─── ENTRY SIGNALS ──────────────────────────────────────────────────────────
+// ============================================================================
+bull_signal = filters_ok and
+              bull_score >= ai_bull_thresh and
+              bull_score > bear_score and
+              bull_consec >= min_score_consec and
+              strategy.position_size == 0
+
+bear_signal = filters_ok and
+              bear_score >= ai_bear_thresh and
+              bear_score > bull_score and
+              bear_consec >= min_score_consec and
+              strategy.position_size == 0
+
+// ============================================================================
+// ─── RISK MANAGEMENT CALCULATIONS ───────────────────────────────────────────
+// ============================================================================
+atr_now = ta.atr(atr_len)
+
+// Stop Loss
+long_sl_atr  = close - atr_now * sl_atr_mult
+long_sl_pct  = close * (1 - sl_pct / 100)
+long_sl_str  = ta.lowest(low, sr_lookback) - atr_now * 0.5  // structural
+
+short_sl_atr = close + atr_now * sl_atr_mult
+short_sl_pct = close * (1 + sl_pct / 100)
+short_sl_str = ta.highest(high, sr_lookback) + atr_now * 0.5
+
+long_sl  = sl_type == "ATR"       ? long_sl_atr  :
+           sl_type == "Percent"   ? long_sl_pct  : long_sl_str
+short_sl = sl_type == "ATR"       ? short_sl_atr :
+           sl_type == "Percent"   ? short_sl_pct : short_sl_str
+
+long_sl_dist  = close - long_sl
+short_sl_dist = short_sl - close
+
+// Take Profit
+long_tp_atr  = close + atr_now * tp_atr_mult
+long_tp_pct  = close * (1 + tp_pct / 100)
+long_tp_rr   = close + long_sl_dist * tp_rr
+
+short_tp_atr = close - atr_now * tp_atr_mult
+short_tp_pct = close * (1 - tp_pct / 100)
+short_tp_rr  = close - short_sl_dist * tp_rr
+
+long_tp  = tp_type == "ATR"     ? long_tp_atr  :
+           tp_type == "Percent" ? long_tp_pct  : long_tp_rr
+short_tp = tp_type == "ATR"     ? short_tp_atr :
+           tp_type == "Percent" ? short_tp_pct : short_tp_rr
+
+// ============================================================================
+// ─── TRAILING STOP STATE ────────────────────────────────────────────────────
+// ============================================================================
+var float trail_sl_long  = na
+var float trail_sl_short = na
+var float entry_price    = na
+var bool  be_moved       = false
+
+if bull_signal
+    entry_price    := close
+    trail_sl_long  := close - atr_now * trail_atr
+    be_moved       := false
+
+if bear_signal
+    entry_price    := close
+    trail_sl_short := close + atr_now * trail_atr
+    be_moved       := false
+
+if strategy.position_size > 0 and use_trail
+    new_trail = close - atr_now * trail_atr
+    trail_sl_long := math.max(trail_sl_long, new_trail)
+
+if strategy.position_size < 0 and use_trail
+    new_trail = close + atr_now * trail_atr
+    trail_sl_short := math.min(trail_sl_short, new_trail)
+
+// Break-even logic
+if use_be and strategy.position_size > 0 and not na(entry_price)
+    if close >= entry_price + long_sl_dist * be_trigger and not be_moved
+        trail_sl_long := math.max(trail_sl_long, entry_price)
+        be_moved      := true
+
+if use_be and strategy.position_size < 0 and not na(entry_price)
+    if close <= entry_price - short_sl_dist * be_trigger and not be_moved
+        trail_sl_short := math.min(trail_sl_short, entry_price)
+        be_moved       := true
+
+// ============================================================================
+// ─── EXECUTE ORDERS ─────────────────────────────────────────────────────────
+// ============================================================================
+if bull_signal
+    strategy.entry("Long", strategy.long, comment="AI LONG " + str.tostring(math.round(bull_score, 1)) + "%")
+
+if bear_signal
+    strategy.entry("Short", strategy.short, comment="AI SHORT " + str.tostring(math.round(bear_score, 1)) + "%")
+
+// Long exits
+if strategy.position_size > 0
+    if use_trail
+        strategy.exit("Long Exit", "Long", stop=trail_sl_long, limit=long_tp,
+                       comment_loss="Trail SL", comment_profit="TP Hit")
+    else
+        strategy.exit("Long Exit", "Long", stop=long_sl, limit=long_tp,
+                       comment_loss="SL Hit", comment_profit="TP Hit")
+
+    // Score-based exit
+    if bull_score < ai_exit_thresh and bear_score > bull_score
+        strategy.close("Long", comment="Score Exit")
+
+// Short exits
+if strategy.position_size < 0
+    if use_trail
+        strategy.exit("Short Exit", "Short", stop=trail_sl_short, limit=short_tp,
+                       comment_loss="Trail SL", comment_profit="TP Hit")
+    else
+        strategy.exit("Short Exit", "Short", stop=short_sl, limit=short_tp,
+                       comment_loss="SL Hit", comment_profit="TP Hit")
+
+    if bear_score < ai_exit_thresh and bull_score > bear_score
+        strategy.close("Short", comment="Score Exit")
+
+// ============================================================================
+// ─── VISUAL: EMA LINES ──────────────────────────────────────────────────────
+// ============================================================================
+plot(show_emas ? ema8   : na, "EMA 8",   color=color.new(#00E5FF, 0),  linewidth=1)
+plot(show_emas ? ema21  : na, "EMA 21",  color=color.new(#FF9800, 0),  linewidth=1)
+plot(show_emas ? ema50  : na, "EMA 50",  color=color.new(#E91E63, 0),  linewidth=2)
+plot(show_emas ? ema200 : na, "EMA 200", color=color.new(#9C27B0, 0),  linewidth=2)
+
+// ============================================================================
+// ─── VISUAL: BOLLINGER BANDS ────────────────────────────────────────────────
+// ============================================================================
+bb_upper_plot = plot(show_bb ? bb_upper : na, "BB Upper", color=color.new(color.blue, 70), linewidth=1)
+bb_lower_plot = plot(show_bb ? bb_lower : na, "BB Lower", color=color.new(color.blue, 70), linewidth=1)
+bb_mid_plot   = plot(show_bb ? bb_mid   : na, "BB Mid",   color=color.new(color.blue, 50), linewidth=1, style=plot.style_circles)
+fill(bb_upper_plot, bb_lower_plot, color=color.new(color.blue, 93))
+
+// ============================================================================
+// ─── VISUAL: KELTNER CHANNELS ───────────────────────────────────────────────
+// ============================================================================
+kc_u_plot = plot(show_kc ? kc_upper : na, "KC Upper", color=color.new(color.orange, 70), linewidth=1)
+kc_l_plot = plot(show_kc ? kc_lower : na, "KC Lower", color=color.new(color.orange, 70), linewidth=1)
+fill(kc_u_plot, kc_l_plot, color=color.new(color.orange, 95))
+
+// ============================================================================
+// ─── VISUAL: VWAP ───────────────────────────────────────────────────────────
+// ============================================================================
+plot(show_vwap ? vwap_val : na, "VWAP", color=color.new(#FFD700, 0), linewidth=2, style=plot.style_circles)
+
+// ============================================================================
+// ─── VISUAL: ICHIMOKU ───────────────────────────────────────────────────────
+// ============================================================================
+spanA_plot = plot(use_ichimoku ? ich_spanA : na, "Span A", color=color.new(color.green, 70), offset=ich_base)
+spanB_plot = plot(use_ichimoku ? ich_spanB : na, "Span B", color=color.new(color.red,   70), offset=ich_base)
+fill(spanA_plot, spanB_plot,
+     ich_spanA > ich_spanB ? color.new(color.green, 90) : color.new(color.red, 90))
+plot(use_ichimoku ? ich_conv_line : na, "Conversion", color=color.new(#26C6DA, 80), linewidth=1)
+plot(use_ichimoku ? ich_base_line : na, "Base",       color=color.new(#EF5350, 80), linewidth=1)
+
+// ============================================================================
+// ─── VISUAL: PIVOT LINES ────────────────────────────────────────────────────
+// ============================================================================
+plot(show_pivots ? pivot_p  : na, "Pivot",  color=color.new(color.white, 30), linewidth=1, style=plot.style_circles)
+plot(show_pivots ? pivot_r1 : na, "R1",     color=color.new(color.red,   40), linewidth=1)
+plot(show_pivots ? pivot_s1 : na, "S1",     color=color.new(color.green, 40), linewidth=1)
+plot(show_pivots ? pivot_r2 : na, "R2",     color=color.new(color.red,   60), linewidth=1, style=plot.style_circles)
+plot(show_pivots ? pivot_s2 : na, "S2",     color=color.new(color.green, 60), linewidth=1, style=plot.style_circles)
+
+// ============================================================================
+// ─── VISUAL: SCORE BACKGROUND ───────────────────────────────────────────────
+// ============================================================================
+bg_col = show_score_bg ?
+         bull_score >= ai_bull_thresh and bull_score > bear_score ? color.new(color.green, 90) :
+         bear_score >= ai_bear_thresh and bear_score > bull_score ? color.new(color.red,   90) :
+         na : na
+bgcolor(bg_col)
+
+// ============================================================================
+// ─── VISUAL: SQUEEZE DOTS ───────────────────────────────────────────────────
+// ============================================================================
+plotshape(use_squeeze and bb_squeeze,          title="Squeeze On",  location=location.bottom,
+          style=shape.circle, size=size.tiny, color=color.new(color.gray,   0))
+plotshape(use_squeeze and squeeze_release_bull, title="Squeeze Bull",location=location.bottom,
+          style=shape.circle, size=size.small,color=color.new(color.green,  0))
+plotshape(use_squeeze and squeeze_release_bear, title="Squeeze Bear",location=location.top,
+          style=shape.circle, size=size.small,color=color.new(color.red,    0))
+
+// ============================================================================
+// ─── VISUAL: ENTRY / EXIT LABELS ────────────────────────────────────────────
+// ============================================================================
+if show_signals and bull_signal
+    label.new(bar_index, low - atr_now * 0.5,
+              "▲ LONG\n" + str.tostring(math.round(bull_score, 1)) + "%",
+              style=label.style_label_up,
+              color=color.new(color.green, 10),
+              textcolor=color.white, size=size.small)
+
+if show_signals and bear_signal
+    label.new(bar_index, high + atr_now * 0.5,
+              "▼ SHORT\n" + str.tostring(math.round(bear_score, 1)) + "%",
+              style=label.style_label_down,
+              color=color.new(color.red, 10),
+              textcolor=color.white, size=size.small)
+
+// ============================================================================
+// ─── VISUAL: PATTERN LABELS ─────────────────────────────────────────────────
+// ============================================================================
+if bull_engulf
+    label.new(bar_index, low - atr_now, "Bull Engulf", style=label.style_label_up,
+              color=color.new(color.lime, 20), textcolor=color.black, size=size.tiny)
+if bear_engulf
+    label.new(bar_index, high + atr_now, "Bear Engulf", style=label.style_label_down,
+              color=color.new(color.red, 20), textcolor=color.white, size=size.tiny)
+if morn_star
+    label.new(bar_index, low - atr_now * 1.5, "☀ Morn Star", style=label.style_label_up,
+              color=color.new(color.yellow, 20), textcolor=color.black, size=size.tiny)
+if even_star
+    label.new(bar_index, high + atr_now * 1.5, "★ Even Star", style=label.style_label_down,
+              color=color.new(color.orange, 20), textcolor=color.black, size=size.tiny)
+
+// ============================================================================
+// ─── DASHBOARD ──────────────────────────────────────────────────────────────
+// ============================================================================
+var table dash = table.new(
+     position = dash_location == "Top Right"     ? position.top_right    :
+                dash_location == "Top Left"      ? position.top_left     :
+                dash_location == "Bottom Right"  ? position.bottom_right :
+                                                   position.bottom_left,
+     columns = 3, rows = 28,
+     bgcolor = color.new(color.black, 10),
+     border_color = color.new(color.gray, 50),
+     border_width = 1,
+     frame_color  = color.new(color.white, 30),
+     frame_width  = 2)
+
+// Helper functions for colour coding
+score_color(val) =>
+    val >= 75 ? color.new(color.lime,   10) :
+    val >= 50 ? color.new(color.green,  10) :
+    val >= 25 ? color.new(color.orange, 10) :
+                color.new(color.red,    10)
+
+bull_bear_color(bull, bear) =>
+    bull > bear ? color.new(color.green, 20) : color.new(color.red, 20)
+
+if show_dashboard and barstate.islast
+    // Helpers
+    _cell(r, c, txt, bg, tc) =>
+        table.cell(dash, c, r, txt,
+                   bgcolor=bg, text_color=tc,
+                   text_size=size.small, text_halign=text.align_center)
+
+    _header(r, txt) =>
+        table.cell(dash, 0, r, txt,
+                   bgcolor=color.new(color.navy, 20),
+                   text_color=color.white, text_size=size.small,
+                   text_halign=text.align_left)
+        table.merge_cells(dash, 0, r, 2, r)
+
+    // Title row
+    table.cell(dash, 0, 0, "🤖 AI CONFLUENCE STRATEGY",
+               bgcolor=color.new(#1A237E, 0), text_color=color.white,
+               text_size=size.normal, text_halign=text.align_center)
+    table.merge_cells(dash, 0, 0, 2, 0)
+
+    // Column headers
+    table.cell(dash, 0, 1, "INDICATOR",        bgcolor=color.new(color.gray, 50), text_color=color.white, text_size=size.small)
+    table.cell(dash, 1, 1, "VALUE",            bgcolor=color.new(color.gray, 50), text_color=color.white, text_size=size.small)
+    table.cell(dash, 2, 1, "SIGNAL",           bgcolor=color.new(color.gray, 50), text_color=color.white, text_size=size.small)
+
+    // ── AI Score
+    _header(2, "── AI SCORES ─────────────────")
+    table.cell(dash, 0, 3,  "Bull Score",          bgcolor=color.new(color.black,20), text_color=color.silver, text_size=size.small)
+    table.cell(dash, 1, 3,  str.tostring(math.round(bull_score, 1)) + "%", bgcolor=score_color(bull_score), text_color=color.white, text_size=size.small)
+    table.cell(dash, 2, 3,  bull_score >= ai_bull_thresh ? "✔ BULL" : "─",  bgcolor=bull_score >= ai_bull_thresh ? color.new(color.green,20) : color.new(color.gray,60), text_color=color.white, text_size=size.small)
+
+    table.cell(dash, 0, 4,  "Bear Score",          bgcolor=color.new(color.black,20), text_color=color.silver, text_size=size.small)
+    table.cell(dash, 1, 4,  str.tostring(math.round(bear_score, 1)) + "%", bgcolor=score_color(bear_score), text_color=color.white, text_size=size.small)
+    table.cell(dash, 2, 4,  bear_score >= ai_bear_thresh ? "✔ BEAR" : "─",  bgcolor=bear_score >= ai_bear_thresh ? color.new(color.red,20)   : color.new(color.gray,60), text_color=color.white, text_size=size.small)
+
+    table.cell(dash, 0, 5,  "Dominance",           bgcolor=color.new(color.black,20), text_color=color.silver, text_size=size.small)
+    table.cell(dash, 1, 5,  str.tostring(math.round(math.abs(score_diff), 1)) + "%", bgcolor=color.new(color.black,20), text_color=color.white, text_size=size.small)
+    table.cell(dash, 2, 5,  score_diff > 0 ? "BULLS" : "BEARS", bgcolor=bull_bear_color(bull_score, bear_score), text_color=color.white, text_size=size.small)
+
+    // ── Trend
+    _header(6, "── TREND ─────────────────────")
+    table.cell(dash, 0, 7, "EMA Stack",       bgcolor=color.new(color.black,20), text_color=color.silver, text_size=size.small)
+    ema_stack_bull = ema8 > ema21 and ema21 > ema50 and ema50 > ema200
+    ema_stack_bear = ema8 < ema21 and ema21 < ema50 and ema50 < ema200
+    table.cell(dash, 1, 7, ema_stack_bull ? "Bullish" : ema_stack_bear ? "Bearish" : "Mixed", bgcolor=color.new(color.black,20), text_color=ema_stack_bull ? color.lime : ema_stack_bear ? color.red : color.orange, text_size=size.small)
+    table.cell(dash, 2, 7, str.tostring(trend_bull_score) + "/" + str.tostring(int(trend_max_score)), bgcolor=score_color(norm_trend_bull), text_color=color.white, text_size=size.small)
+
+    table.cell(dash, 0, 8, "ADX",            bgcolor=color.new(color.black,20), text_color=color.silver, text_size=size.small)
+    table.cell(dash, 1, 8, str.tostring(math.round(adx_val, 1)), bgcolor=color.new(color.black,20), text_color=color.white, text_size=size.small)
+    table.cell(dash, 2, 8, adx_val > adx_thresh ? (diplus > diminus ? "↑ Trend" : "↓ Trend") : "Ranging", bgcolor=adx_val > adx_thresh ? color.new(color.teal,30) : color.new(color.gray,60), text_color=color.white, text_size=size.small)
+
+    table.cell(dash, 0, 9, "Ichimoku",       bgcolor=color.new(color.black,20), text_color=color.silver, text_size=size.small)
+    table.cell(dash, 1, 9, ich_above_cloud ? "Above" : ich_below_cloud ? "Below" : "In Cloud", bgcolor=color.new(color.black,20), text_color=ich_above_cloud ? color.lime : ich_below_cloud ? color.red : color.orange, text_size=size.small)
+    table.cell(dash, 2, 9, "─", bgcolor=color.new(color.gray,60), text_color=color.white, text_size=size.small)
+
+    // ── Momentum
+    _header(10, "── MOMENTUM ──────────────────")
+    table.cell(dash, 0, 11, "RSI(" + str.tostring(rsi_len) + ")", bgcolor=color.new(color.black,20), text_color=color.silver, text_size=size.small)
+    table.cell(dash, 1, 11, str.tostring(math.round(rsi_val, 1)), bgcolor=color.new(color.black,20), text_color=rsi_val > rsi_ob ? color.red : rsi_val < rsi_os ? color.lime : color.white, text_size=size.small)
+    table.cell(dash, 2, 11, rsi_val > rsi_ob ? "Overbought" : rsi_val < rsi_os ? "Oversold" : rsi_val > 50 ? "Bullish" : "Bearish", bgcolor=rsi_val > 50 ? color.new(color.green,50) : color.new(color.red,50), text_color=color.white, text_size=size.small)
+
+    table.cell(dash, 0, 12, "MACD",          bgcolor=color.new(color.black,20), text_color=color.silver, text_size=size.small)
+    table.cell(dash, 1, 12, str.tostring(math.round(macd_line, 4)), bgcolor=color.new(color.black,20), text_color=macd_line > 0 ? color.lime : color.red, text_size=size.small)
+    table.cell(dash, 2, 12, macd_line > sig_line ? "Bull" : "Bear", bgcolor=macd_line > sig_line ? color.new(color.green,40) : color.new(color.red,40), text_color=color.white, text_size=size.small)
+
+    table.cell(dash, 0, 13, "Stoch",         bgcolor=color.new(color.black,20), text_color=color.silver, text_size=size.small)
+    table.cell(dash, 1, 13, str.tostring(math.round(stoch_k_val, 1)), bgcolor=color.new(color.black,20), text_color=stoch_k_val > stoch_ob ? color.red : stoch_k_val < stoch_os ? color.lime : color.white, text_size=size.small)
+    table.cell(dash, 2, 13, stoch_k_val > stoch_ob ? "Overbought" : stoch_k_val < stoch_os ? "Oversold" : "Neutral", bgcolor=color.new(color.gray,50), text_color=color.white, text_size=size.small)
+
+    table.cell(dash, 0, 14, "CCI",           bgcolor=color.new(color.black,20), text_color=color.silver, text_size=size.small)
+    table.cell(dash, 1, 14, str.tostring(math.round(cci_val, 1)), bgcolor=color.new(color.black,20), text_color=cci_val > 100 ? color.red : cci_val < -100 ? color.lime : color.white, text_size=size.small)
+    table.cell(dash, 2, 14, cci_val > 0 ? "Bull" : "Bear", bgcolor=cci_val > 0 ? color.new(color.green,50) : color.new(color.red,50), text_color=color.white, text_size=size.small)
+
+    table.cell(dash, 0, 15, "MFI",           bgcolor=color.new(color.black,20), text_color=color.silver, text_size=size.small)
+    table.cell(dash, 1, 15, str.tostring(math.round(mfi_val, 1)), bgcolor=color.new(color.black,20), text_color=mfi_val > 80 ? color.red : mfi_val < 20 ? color.lime : color.white, text_size=size.small)
+    table.cell(dash, 2, 15, mfi_val > 50 ? "Bull" : "Bear", bgcolor=mfi_val > 50 ? color.new(color.green,50) : color.new(color.red,50), text_color=color.white, text_size=size.small)
+
+    // ── Volatility
+    _header(16, "── VOLATILITY ────────────────")
+    table.cell(dash, 0, 17, "ATR(" + str.tostring(atr_len) + ") %", bgcolor=color.new(color.black,20), text_color=color.silver, text_size=size.small)
+    table.cell(dash, 1, 17, str.tostring(math.round(atr_pct, 2)) + "%", bgcolor=color.new(color.black,20), text_color=color.white, text_size=size.small)
+    table.cell(dash, 2, 17, "─", bgcolor=color.new(color.gray,60), text_color=color.white, text_size=size.small)
+
+    table.cell(dash, 0, 18, "BB %B",         bgcolor=color.new(color.black,20), text_color=color.silver, text_size=size.small)
+    table.cell(dash, 1, 18, str.tostring(math.round(bb_pct_b * 100, 1)) + "%", bgcolor=color.new(color.black,20), text_color=bb_pct_b > 0.8 ? color.red : bb_pct_b < 0.2 ? color.lime : color.white, text_size=size.small)
+    table.cell(dash, 2, 18, bb_squeeze ? "SQUEEZE" : "Normal", bgcolor=bb_squeeze ? color.new(color.purple,30) : color.new(color.gray,60), text_color=color.white, text_size=size.small)
+
+    table.cell(dash, 0, 19, "HV (Ann.)",     bgcolor=color.new(color.black,20), text_color=color.silver, text_size=size.small)
+    table.cell(dash, 1, 19, str.tostring(math.round(hv_20, 1)) + "%", bgcolor=color.new(color.black,20), text_color=color.white, text_size=size.small)
+    table.cell(dash, 2, 19, "─", bgcolor=color.new(color.gray,60), text_color=color.white, text_size=size.small)
+
+    // ── Volume
+    _header(20, "── VOLUME ────────────────────")
+    table.cell(dash, 0, 21, "Rel Volume",    bgcolor=color.new(color.black,20), text_color=color.silver, text_size=size.small)
+    table.cell(dash, 1, 21, str.tostring(math.round(rel_vol, 2)) + "x", bgcolor=color.new(color.black,20), text_color=rel_vol > vol_thresh ? color.lime : color.white, text_size=size.small)
+    table.cell(dash, 2, 21, vol_surge ? "SURGE" : "Normal", bgcolor=vol_surge ? color.new(color.blue,30) : color.new(color.gray,60), text_color=color.white, text_size=size.small)
+
+    table.cell(dash, 0, 22, "VWAP",          bgcolor=color.new(color.black,20), text_color=color.silver, text_size=size.small)
+    table.cell(dash, 1, 22, str.tostring(math.round(vwap_val, 2)), bgcolor=color.new(color.black,20), text_color=color.white, text_size=size.small)
+    table.cell(dash, 2, 22, above_vwap ? "Above" : "Below", bgcolor=above_vwap ? color.new(color.green,40) : color.new(color.red,40), text_color=color.white, text_size=size.small)
+
+    table.cell(dash, 0, 23, "CMF",           bgcolor=color.new(color.black,20), text_color=color.silver, text_size=size.small)
+    table.cell(dash, 1, 23, str.tostring(math.round(cmf_val, 3)), bgcolor=color.new(color.black,20), text_color=cmf_val > 0 ? color.lime : color.red, text_size=size.small)
+    table.cell(dash, 2, 23, cmf_val > 0.1 ? "Buy Pressure" : cmf_val < -0.1 ? "Sell Pressure" : "Neutral", bgcolor=cmf_val > 0 ? color.new(color.green,50) : color.new(color.red,50), text_color=color.white, text_size=size.small)
+
+    // ── Trade State
+    _header(24, "── TRADE STATE ───────────────")
+    pos_txt = strategy.position_size > 0 ? "LONG  " + str.tostring(math.round(strategy.position_size, 2)) :
+              strategy.position_size < 0 ? "SHORT " + str.tostring(math.abs(math.round(strategy.position_size, 2))) :
+              "FLAT"
+    pos_col = strategy.position_size > 0 ? color.new(color.green, 20) :
+              strategy.position_size < 0 ? color.new(color.red,   20) :
+              color.new(color.gray, 50)
+    table.cell(dash, 0, 25, "Position",      bgcolor=color.new(color.black,20), text_color=color.silver, text_size=size.small)
+    table.cell(dash, 1, 25, pos_txt,         bgcolor=pos_col, text_color=color.white, text_size=size.small)
+    table.cell(dash, 2, 25, "─",             bgcolor=color.new(color.gray,60), text_color=color.white, text_size=size.small)
+
+    pnl_pct = strategy.openprofit / strategy.initial_capital * 100
+    table.cell(dash, 0, 26, "Open P&L",      bgcolor=color.new(color.black,20), text_color=color.silver, text_size=size.small)
+    table.cell(dash, 1, 26, str.tostring(math.round(strategy.openprofit, 2)), bgcolor=color.new(color.black,20), text_color=strategy.openprofit >= 0 ? color.lime : color.red, text_size=size.small)
+    table.cell(dash, 2, 26, str.tostring(math.round(pnl_pct, 2)) + "%", bgcolor=color.new(color.black,20), text_color=strategy.openprofit >= 0 ? color.lime : color.red, text_size=size.small)
+
+    net_pnl_pct = (strategy.equity - strategy.initial_capital) / strategy.initial_capital * 100
+    table.cell(dash, 0, 27, "Net Equity",    bgcolor=color.new(color.black,20), text_color=color.silver, text_size=size.small)
+    table.cell(dash, 1, 27, str.tostring(math.round(strategy.equity, 0)), bgcolor=color.new(color.black,20), text_color=net_pnl_pct >= 0 ? color.lime : color.red, text_size=size.small)
+    table.cell(dash, 2, 27, str.tostring(math.round(net_pnl_pct, 2)) + "%", bgcolor=net_pnl_pct >= 0 ? color.new(color.green,40) : color.new(color.red,40), text_color=color.white, text_size=size.small)
+
+// ============================================================================
+// ─── ALERTS ─────────────────────────────────────────────────────────────────
+// ============================================================================
+alertcondition(bull_signal, title="🟢 LONG Signal",
+               message="AI-CTS LONG | {{ticker}} | Score: {{plot_0}}% | Price: {{close}}")
+alertcondition(bear_signal, title="🔴 SHORT Signal",
+               message="AI-CTS SHORT | {{ticker}} | Score: {{plot_0}}% | Price: {{close}}")
+alertcondition(bb_squeeze, title="⚡ BB Squeeze Active",
+               message="AI-CTS Squeeze | {{ticker}} | Breakout imminent | Price: {{close}}")
+alertcondition(squeeze_release_bull, title="🚀 Squeeze Release Bullish",
+               message="AI-CTS Squeeze Bull Release | {{ticker}} | Price: {{close}}")
+alertcondition(squeeze_release_bear, title="💥 Squeeze Release Bearish",
+               message="AI-CTS Squeeze Bear Release | {{ticker}} | Price: {{close}}")
+alertcondition(strategy.position_size[1] != 0 and strategy.position_size == 0,
+               title="🏁 Trade Closed",
+               message="AI-CTS Trade Closed | {{ticker}} | P&L: {{strategy.netprofit}}")
+
+// ============================================================================
+// ─── HIDDEN SCORE PLOTS (for Pine strategy tester overlay panels) ────────────
+// ============================================================================
+plot(bull_score, "Bull Score", color=color.new(color.green,  100), display=display.data_window)
+plot(bear_score, "Bear Score", color=color.new(color.red,    100), display=display.data_window)
+plot(adx_val,    "ADX",        color=color.new(color.purple, 100), display=display.data_window)
+plot(rsi_val,    "RSI",        color=color.new(color.orange, 100), display=display.data_window)
+plot(cmf_val,    "CMF",        color=color.new(color.blue,   100), display=display.data_window)
