@@ -1,4 +1,4 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="1300" height="1100" viewBox="0 0 1300 1100" font-family="Arial, Helvetica, sans-serif">
+<svg xmlns="http://www.w3.org/2000/svg" width="1300" height="1140" viewBox="0 0 1300 1140" font-family="Arial, Helvetica, sans-serif">
 <rect width="100%" height="100%" fill="white"/>
 <style>.w{stroke:#000;stroke-width:2;fill:none}.r{stroke:#d00;stroke-width:2.5;fill:none;stroke-dasharray:8 5}.t{font-size:16px;fill:#000}.b{font-size:18px;font-weight:bold}.s{font-size:14px;fill:#333}.h{font-size:22px;font-weight:bold;text-decoration:underline}.box{stroke:#000;stroke-width:2.5;fill:#fff}</style>
 <defs><marker id="ar" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#000"/></marker></defs>
@@ -50,7 +50,7 @@
 <text x="40" y="466" class="s" text-anchor="start">Q3 never toggles (Q2 never falls before the reset), so the sequence has 7 states: MOD-7.</text>
 <g transform="translate(0,520)">
 <text x="40" y="0" class="h" text-anchor="start">Internal circuit of the 7493 (as connected for MOD-7)</text>
-<rect x="70" y="140" width="920" height="320" fill="none" stroke="#555" stroke-width="2" stroke-dasharray="10 6"/>
+<rect x="70" y="140" width="920" height="330" fill="none" stroke="#555" stroke-width="2" stroke-dasharray="10 6"/>
 <text x="80" y="157" class="s" text-anchor="start">7493 (internal circuit)</text>
 <rect class="box" x="200" y="180" width="90" height="100"/>
 <text x="222" y="205" class="t" text-anchor="start">J</text>
@@ -121,30 +121,34 @@
 <polyline class="w" points="905,180 905,42" marker-end="url(#ar)"/>
 <text x="905" y="24" class="b" text-anchor="middle">Q3 (unused)</text>
 <polyline class="w" points="245,330 905,330"/>
-<text x="560" y="350" class="s" text-anchor="start">CLR bus (active LOW)</text>
+<text x="700" y="350" class="s" text-anchor="start">CLR bus (active LOW)</text>
 <polyline class="w" points="70,230 190,230"/>
 <circle cx="70" cy="230" r="4.5" fill="#000"/>
 <text x="62" y="225" class="t" text-anchor="end">CP0</text>
-<polyline class="w" points="340,140 340,230 410,230"/>
-<circle cx="340" cy="140" r="5" fill="#fff" stroke="#000" stroke-width="2"/>
-<text x="350" y="157" class="t" text-anchor="start">CP1</text>
+<polyline class="w" points="340,470 340,230 410,230"/>
+<circle cx="340" cy="470" r="5" fill="#fff" stroke="#000" stroke-width="2"/>
+<text x="350" y="462" class="t" text-anchor="start">CP1</text>
 <circle cx="245" cy="120" r="4.5" fill="#000"/>
-<polyline class="r" points="245,120 340,120 340,135"/>
-<text x="256" y="112" class="s" text-anchor="start">Q0 to CP1 (external link)</text>
+<polyline class="r" points="245,120 15,120 15,495 340,495 340,476"/>
+<text x="40" y="516" class="s" text-anchor="start">Q0 to CP1 (external link)</text>
 <circle cx="465" cy="160" r="4.5" fill="#000"/>
 <polyline class="w" points="465,160 600,160 600,230 630,230"/>
 <circle cx="685" cy="160" r="4.5" fill="#000"/>
 <polyline class="w" points="685,160 820,160 820,230 850,230"/>
-<path class="box" d="M400,360 h35 a40,40 0 0 1 0,80 h-35 z"/>
-<circle cx="480" cy="400" r="5" class="box"/>
-<text x="432" y="405" class="t" text-anchor="middle">NAND</text>
-<polyline class="w" points="70,375 400,375"/>
-<polyline class="w" points="70,425 400,425"/>
-<circle cx="70" cy="375" r="5" fill="#fff" stroke="#000" stroke-width="2"/><circle cx="70" cy="425" r="5" fill="#fff" stroke="#000" stroke-width="2"/>
-<text x="100" y="368" class="t" text-anchor="start">MR1</text>
-<text x="100" y="418" class="t" text-anchor="start">MR2</text>
-<polyline class="w" points="485,400 520,400 520,330"/>
-<circle cx="520" cy="330" r="4.5" fill="#000"/>
+<path class="box" d="M520,445 v-35 a40,40 0 0 1 80,0 v35 z"/>
+<circle cx="560" cy="365" r="5" class="box"/>
+<text x="560" y="425" class="t" text-anchor="middle">NAND</text>
+<polyline class="w" points="560,360 560,330"/>
+<circle cx="560" cy="330" r="4.5" fill="#000"/>
+<polyline class="w" points="540,445 540,465"/>
+<polyline class="w" points="540,475 540,510"/>
+<circle cx="540" cy="470" r="5" fill="#fff" stroke="#000" stroke-width="2"/>
+<polyline class="w" points="580,445 580,465"/>
+<polyline class="w" points="580,475 580,510"/>
+<circle cx="580" cy="470" r="5" fill="#fff" stroke="#000" stroke-width="2"/>
+<text x="532" y="462" class="t" text-anchor="end">MR1</text>
+<text x="588" y="462" class="t" text-anchor="start">MR2</text>
+<circle cx="580" cy="510" r="4.5" fill="#000"/>
 <polyline class="w" points="245,70 1050,70 1050,225 1080,225"/>
 <circle cx="245" cy="70" r="4.5" fill="#000"/>
 <polyline class="w" points="465,85 1030,85 1030,250 1080,250"/>
@@ -154,10 +158,8 @@
 <path class="box" d="M1080,210 h35 a40,40 0 0 1 0,80 h-35 z"/>
 <text x="1110" y="255" class="t" text-anchor="middle">AND</text>
 <text x="1120" y="198" class="s" text-anchor="middle">external 3-input AND</text>
-<polyline class="w" points="1155,250 1210,250 1210,490 30,490 30,375 65,375"/>
-<polyline class="w" points="30,425 65,425"/>
-<circle cx="30" cy="425" r="4.5" fill="#000"/>
-<text x="620" y="482" class="t" text-anchor="middle">Reset = Q0 . Q1 . Q2  (drives MR1 and MR2 together)</text>
-<text x="40" y="525" class="s" text-anchor="start">Each flip-flop is a toggle (J = K = 1), negative-edge triggered. FF0 is clocked by CP0; FF1 by CP1; FF2 by Q1; FF3 by Q2.</text>
-<text x="40" y="545" class="s" text-anchor="start">CLR = NOT(MR1 . MR2): when both MR inputs are HIGH all four flip-flops are cleared asynchronously.</text>
+<polyline class="w" points="1155,250 1210,250 1210,510 540,510"/>
+<text x="900" y="502" class="t" text-anchor="middle">Reset = Q0 . Q1 . Q2  (drives MR1 and MR2 together)</text>
+<text x="40" y="560" class="s" text-anchor="start">Each flip-flop is a toggle (J = K = 1), negative-edge triggered. FF0 is clocked by CP0; FF1 by CP1; FF2 by Q1; FF3 by Q2.</text>
+<text x="40" y="580" class="s" text-anchor="start">CLR = NOT(MR1 . MR2): when both MR inputs are HIGH all four flip-flops are cleared asynchronously.</text>
 </g></svg>
